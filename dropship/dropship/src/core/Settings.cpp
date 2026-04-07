@@ -17,9 +17,11 @@ namespace dropship::settings {
 				{ "auto_update", p.options.auto_update },
 				{ "ping_servers", p.options.ping_servers },
 				{ "tunneling", p.options.tunneling },
+				{ "whitelist_only", p.options.whitelist_only },
 			}},
 			{"config", {
 				{ "blocked_endpoints", p.config.blocked_endpoints },
+				{ "allowed_endpoints", p.config.allowed_endpoints },
 			}},
 		};
 
@@ -42,9 +44,11 @@ namespace dropship::settings {
 			"/options/auto_update"_json_pointer,
 			"/options/ping_servers"_json_pointer,
 			"/options/tunneling"_json_pointer,
+			"/options/whitelist_only"_json_pointer,
 
 			/* vector<string> */
 			"/config/blocked_endpoints"_json_pointer,
+			"/config/allowed_endpoints"_json_pointer,
 		};
 
 		for (auto& p : compare)
@@ -67,8 +71,10 @@ namespace dropship::settings {
 		if (j.contains("/options/auto_update"_json_pointer)) j.at("/options/auto_update"_json_pointer).get_to(p.options.auto_update);
 		if (j.contains("/options/ping_servers"_json_pointer)) j.at("/options/ping_servers"_json_pointer).get_to(p.options.ping_servers);
 		if (j.contains("/options/tunneling"_json_pointer)) j.at("/options/tunneling"_json_pointer).get_to(p.options.tunneling);
+		if (j.contains("/options/whitelist_only"_json_pointer)) j.at("/options/whitelist_only"_json_pointer).get_to(p.options.whitelist_only);
 
 		if (j.contains("/config/blocked_endpoints"_json_pointer)) j.at("/config/blocked_endpoints"_json_pointer).get_to(p.config.blocked_endpoints);
+		if (j.contains("/config/allowed_endpoints"_json_pointer)) j.at("/config/allowed_endpoints"_json_pointer).get_to(p.config.allowed_endpoints);
 
 		/* optional values */
 		//if (j.contains("/config/tunneling_path"_json_pointer)) j.at("/config/tunneling_path"_json_pointer).get_to(p.config.tunneling_path);
@@ -88,38 +94,48 @@ const dropship::settings::dropship_app_settings& Settings::getAppSettings()
 };
 
 
+bool Settings::isEndpointBlocked(const std::string& endpoint_title) const
+{
+	if (!this->__ow2_endpoints.contains(endpoint_title)) {
+		return false;
+	}
+
+	if (this->_dropship_app_settings.options.whitelist_only) {
+		return !this->_dropship_app_settings.config.allowed_endpoints.contains(endpoint_title);
+	}
+
+	return this->_dropship_app_settings.config.blocked_endpoints.contains(endpoint_title);
+}
+
+
+std::set<std::string> Settings::getBlockedEndpointTitles() const
+{
+	std::set<std::string> result;
+
+	for (const auto& [title, endpoint] : this->__ow2_endpoints)
+	{
+		if (this->isEndpointBlocked(title)) {
+			result.insert(title);
+		}
+	}
+
+	return result;
+}
+
+
+void Settings::syncEndpointDesiredStates()
+{
+	for (auto& endpoint : (*g_endpoints)) {
+		(*endpoint).setBlockDesired(this->isEndpointBlocked((*endpoint).getTitle()));
+	}
+}
+
+
 std::string Settings::getAllBlockedAddresses() {
 
 	std::string result;
 
-	if (this->_dropship_app_settings.config.blocked_endpoints.empty()) return result;
-
-	std::set<std::string> blocked_servers;
-
-	/* note this causes weird crash. */
-	/*for (auto& e : this->_dropship_app_settings.config.blocked_endpoints)
-	{
-		auto& endpoint = this->__ow2_endpoints.at(e);
-
-		for (auto s : endpoint.blocked_servers)
-		{
-			blocked_servers.insert(s);
-		}
-	}
-
-	for (auto& s : blocked_servers)
-	{
-		auto& server = this->__ow2_servers.at(s);
-		result += server.block;
-		result += ',';
-	}*/
-
-	//if (!result.empty())
-	//{
-	//	result = result.substr(0, result.length() - 1);
-	//}
-
-	for (auto& e : this->_dropship_app_settings.config.blocked_endpoints)
+	for (const auto& e : this->getBlockedEndpointTitles())
 	{
 		if (this->__ow2_endpoints.contains(e)) {
 
@@ -240,7 +256,7 @@ void Settings::tryWriteSettingsToStorage(bool force) {
 
 		// TODO if not failed
 		for (auto& endpoint : (*g_endpoints)) {
-			(*endpoint)._setBlockedState(this->_dropship_app_settings.config.blocked_endpoints.contains((*endpoint).getTitle()));
+			(*endpoint)._setBlockedState(this->isEndpointBlocked((*endpoint).getTitle()));
 		}
 
 
@@ -307,7 +323,7 @@ Settings::Settings() {
 
 	for (auto& [key, e] : this->__ow2_endpoints)
 	{
-		auto blocked = this->_dropship_app_settings.config.blocked_endpoints.contains(key);
+		auto blocked = this->isEndpointBlocked(key);
 
 		(*g_endpoints).push_back(std::make_shared<Endpoint2>(
 			key,
@@ -335,8 +351,42 @@ void Settings::unblockAll() {
 	for (auto& endpoint : (*g_endpoints)) {
 		(*endpoint).setBlockDesired(false);
 	}
-	this->_dropship_app_settings.config.blocked_endpoints.clear();
+
+	if (this->_dropship_app_settings.options.whitelist_only)
+	{
+		this->_dropship_app_settings.config.allowed_endpoints.clear();
+
+		for (const auto& [title, endpoint] : this->__ow2_endpoints) {
+			this->_dropship_app_settings.config.allowed_endpoints.insert(title);
+		}
+	}
+	else
+	{
+		this->_dropship_app_settings.config.blocked_endpoints.clear();
+	}
+
 	this->tryWriteSettingsToStorage(true); // force
+}
+
+void Settings::blockAll() {
+	for (auto& endpoint : (*g_endpoints)) {
+		(*endpoint).setBlockDesired(true);
+	}
+
+	if (this->_dropship_app_settings.options.whitelist_only)
+	{
+		this->_dropship_app_settings.config.allowed_endpoints.clear();
+	}
+	else
+	{
+		this->_dropship_app_settings.config.blocked_endpoints.clear();
+
+		for (const auto& [title, endpoint] : this->__ow2_endpoints) {
+			this->_dropship_app_settings.config.blocked_endpoints.insert(title);
+		}
+	}
+
+	this->tryWriteSettingsToStorage();
 }
 
 void Settings::toggleOptionAutoUpdate() {
@@ -366,6 +416,12 @@ void Settings::toggleOptionTunneling() {
 	this->tryWriteSettingsToStorage();
 }
 
+void Settings::toggleOptionWhitelistOnly() {
+	this->_dropship_app_settings.options.whitelist_only = !this->_dropship_app_settings.options.whitelist_only;
+	this->syncEndpointDesiredStates();
+	this->tryWriteSettingsToStorage();
+}
+
 void Settings::setConfigTunnelingPath(std::optional<std::filesystem::path> path)
 {
 	this->_dropship_app_settings.config.tunneling_path = path;
@@ -375,10 +431,20 @@ void Settings::setConfigTunnelingPath(std::optional<std::filesystem::path> path)
 
 // todo std::unordered_set
 void Settings::addBlockedEndpoint(std::string endpoint_title) {
+	bool changed = false;
 
-	auto [_position, hasBeenInserted] = this->_dropship_app_settings.config.blocked_endpoints.insert(endpoint_title);
+	if (this->_dropship_app_settings.options.whitelist_only)
+	{
+		auto const num_removed = this->_dropship_app_settings.config.allowed_endpoints.erase(endpoint_title);
+		changed = num_removed > 0;
+	}
+	else
+	{
+		auto [_position, hasBeenInserted] = this->_dropship_app_settings.config.blocked_endpoints.insert(endpoint_title);
+		changed = hasBeenInserted;
+	}
 
-	if (hasBeenInserted)
+	if (changed)
 	{
 		this->tryWriteSettingsToStorage();
 	}
@@ -387,10 +453,20 @@ void Settings::addBlockedEndpoint(std::string endpoint_title) {
 
 // todo std::unordered_set
 void Settings::removeBlockedEndpoint(std::string endpoint_title) {
+	bool changed = false;
 
-	auto const num_removed = this->_dropship_app_settings.config.blocked_endpoints.erase(endpoint_title);
+	if (this->_dropship_app_settings.options.whitelist_only)
+	{
+		auto [_position, hasBeenInserted] = this->_dropship_app_settings.config.allowed_endpoints.insert(endpoint_title);
+		changed = hasBeenInserted;
+	}
+	else
+	{
+		auto const num_removed = this->_dropship_app_settings.config.blocked_endpoints.erase(endpoint_title);
+		changed = num_removed > 0;
+	}
 
-	if (num_removed > 0)
+	if (changed)
 	{
 		this->tryWriteSettingsToStorage();
 	}
@@ -429,11 +505,10 @@ void Settings::renderWaitingStatus()
 			//static auto& style = ImGui::GetStyle();
 			ImDrawList* list = ImGui::GetWindowDrawList();
 
-			static const ImU32 white = ImGui::ColorConvertFloat4ToU32({ 1, 1, 1, 1 });
-
-			static const auto color = ImGui::ColorConvertFloat4ToU32({ .4f, .4f, .4f, 1.0f });
-			// static const auto color_2 = ImGui::ColorConvertFloat4ToU32({ 0, 0, 0, 0.6f });
-			static const std::string text = "GAME RESTART REQUIRED";
+			static const ImU32 text_color = ImGui::ColorConvertFloat4ToU32({ 0.46f, 0.29f, 0.06f, 1.0f });
+			static const ImU32 background = ImGui::ColorConvertFloat4ToU32({ 0.99f, 0.86f, 0.58f, 0.46f });
+			static const ImU32 border = ImGui::ColorConvertFloat4ToU32({ 0.90f, 0.61f, 0.13f, 0.55f });
+			static const std::string text = "RESTART OVERWATCH TO APPLY CHANGES";
 			//static const std::string text = "GAME SHUT DOWN REQUIRED";
 
 			static const auto font = font_subtitle;
@@ -442,10 +517,11 @@ void Settings::renderWaitingStatus()
 
 			ImGui::Dummy({ ImGui::GetContentRegionAvail().x, font_size.y + 16 });
 
-			list->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), color, 5.0f);
+			list->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), background, 12.0f);
+			list->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), border, 12.0f, 0, 1.0f);
 
 			{
-				static const auto color = ImGui::ColorConvertFloat4ToU32({ 1, 1, 1, 0.09f });
+				static const auto color = ImGui::ColorConvertFloat4ToU32({ 1, 1, 1, 0.12f });
 				const auto pos = ImGui::GetItemRectMin();
 
 				static const auto image = _get_image("background_diagonal");
@@ -456,7 +532,7 @@ void Settings::renderWaitingStatus()
 			}
 
 			const auto pos = ImGui::GetItemRectMin() + ImVec2((ImGui::GetItemRectSize().x - font_size.x) / 2, 8 - 2);
-			list->AddText(font_subtitle, font_subtitle->FontSize, pos, white, text.c_str());
+			list->AddText(font_subtitle, font_subtitle->FontSize, pos, text_color, text.c_str());
 
 		}
 

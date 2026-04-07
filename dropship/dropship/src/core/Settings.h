@@ -32,11 +32,13 @@ namespace dropship::settings {
             bool auto_update { false };
             bool ping_servers { false };
             bool tunneling{ true };
+            bool whitelist_only { false };
         };
         _dropship_app_settings__options options;
 
         struct _dropship_app_settings__config {
             std::set<std::string> blocked_endpoints;
+            std::set<std::string> allowed_endpoints;
             std::optional<std::filesystem::path> tunneling_path;
         };
         _dropship_app_settings__config config;
@@ -244,15 +246,19 @@ class Settings
     public:
 
         void unblockAll();
+        void blockAll();
 
         void toggleOptionAutoUpdate();
         void toggleOptionPingServers();
         void toggleOptionTunneling();
+        void toggleOptionWhitelistOnly();
 
         void addBlockedEndpoint(std::string endpoint_title);
         void removeBlockedEndpoint(std::string endpoint_title);
 
         void setConfigTunnelingPath(std::optional<std::filesystem::path> path);
+
+        bool isEndpointBlocked(const std::string& endpoint_title) const;
 
         //void syncEndpoint(std::shared_ptr<Endpoint2> endpoint);
 
@@ -261,7 +267,10 @@ class Settings
         [[nodiscard]] std::optional<json> readStoragePatch__win_firewall();
         [[nodiscard]] std::optional<json> readStoragePatch();
 
+        [[nodiscard]] std::set<std::string> getBlockedEndpointTitles() const;
         [[nodiscard]] std::string getAllBlockedAddresses();
+
+        void syncEndpointDesiredStates();
 
         bool _waiting_for_config_write { false };
 };

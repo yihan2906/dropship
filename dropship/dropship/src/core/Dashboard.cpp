@@ -65,6 +65,14 @@ Dashboard::Dashboard()
 			.action = [this]() { (*g_settings).toggleOptionTunneling(); },
 			.state = [this]() { return (*g_settings).getAppSettings().options.tunneling; },
 			.external = false,
+			.divide_next = true,
+		},
+		{
+			.title = "whitelist only",
+			.tooltip = "default: off\n\nWhitelist mode blocks every region by default.\nOnly regions you manually allow stay reachable.\n\nWhen enabled for the first time, the allow list\nstarts empty so you can build it from scratch.",
+			.action = [this]() { (*g_settings).toggleOptionWhitelistOnly(); },
+			.state = [this]() { return (*g_settings).getAppSettings().options.whitelist_only; },
+			.external = false,
 		},
 		{
 			.title = "tunneling configuration",
@@ -77,7 +85,6 @@ Dashboard::Dashboard()
 				}
 			},
 			.external = false,
-			.divide_next = true,
 		},
 		{
 			.title = "network settings",
@@ -98,6 +105,12 @@ Dashboard::Dashboard()
 			.action = [this]() { (*g_settings).unblockAll(); },
 		}
 	})), i++, "Unblocks all servers\n\nIf you are ever failing to connect\nto a server, quickly clicking this\nwill prevent a competitive ban"));
+
+	this->header_actions.push_back(std::make_unique<PopupButton>("block all", "icon_block", std::move(std::vector<Action>({
+		{
+			.action = [this]() { (*g_settings).blockAll(); },
+		}
+	})), i++, "Blocks every server\n\nUseful for whitelist-only setups.\nAfter clicking this, re-enable only\nthe regions you want to allow."));
 
 	//(*(this->header_actions)).insert((*(this->header_actions)).end(), {
 	//	std::make_shared<PopupButton>("socials", "icon_heart"),

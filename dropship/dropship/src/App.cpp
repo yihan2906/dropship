@@ -11,6 +11,36 @@ extern std::unique_ptr<Settings> g_settings;
 	extern std::unique_ptr<Debug> g_debug;
 #endif
 
+namespace {
+	struct WorkArea {
+		ImVec2 pos;
+		ImVec2 size;
+	};
+
+	WorkArea getPrimaryWorkArea()
+	{
+		RECT rect {};
+		if (::SystemParametersInfoW(SPI_GETWORKAREA, 0, &rect, 0))
+		{
+			return {
+				ImVec2((float)rect.left, (float)rect.top),
+				ImVec2((float)(rect.right - rect.left), (float)(rect.bottom - rect.top))
+			};
+		}
+
+		const ImGuiIO& io = ImGui::GetIO();
+		return { ImVec2(0.0f, 0.0f), io.DisplaySize };
+	}
+
+	ImVec2 clampVec2(const ImVec2& value, const ImVec2& min_value, const ImVec2& max_value)
+	{
+		return ImVec2(
+			(std::min)((std::max)(value.x, min_value.x), max_value.x),
+			(std::min)((std::max)(value.y, min_value.y), max_value.y)
+		);
+	}
+}
+
 void App::render(bool* p_open) {
 
 #ifdef _DEBUG
@@ -25,10 +55,26 @@ void App::render(bool* p_open) {
 	}
 #endif
 
-	//static const ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_AlwaysAutoResize;
-	static const ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_AlwaysAutoResize;
-	ImGui::SetNextWindowSize(ImVec2(418, 0), ImGuiCond_Once);
-	ImGui::SetNextWindowPos(ImVec2(400, 40), ImGuiCond_Once);
+	static const ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBackground;
+	const WorkArea work_area = getPrimaryWorkArea();
+	const ImVec2 margin = ImVec2(28.0f, 28.0f);
+	const ImVec2 max_window_size = ImVec2(
+		(std::max)(640.0f, work_area.size.x - (margin.x * 2.0f)),
+		(std::max)(480.0f, work_area.size.y - (margin.y * 2.0f))
+	);
+	const ImVec2 min_window_size = ImVec2(
+		(std::min)(960.0f, max_window_size.x),
+		(std::min)(700.0f, max_window_size.y)
+	);
+	const ImVec2 preferred_window_size = ImVec2(
+		(std::min)(1180.0f, max_window_size.x),
+		(std::min)(860.0f, max_window_size.y)
+	);
+	const ImVec2 initial_window_size = clampVec2(preferred_window_size, min_window_size, max_window_size);
+
+	ImGui::SetNextWindowSizeConstraints(min_window_size, max_window_size);
+	ImGui::SetNextWindowSize(initial_window_size, ImGuiCond_Once);
+	ImGui::SetNextWindowPos(work_area.pos + ((work_area.size - initial_window_size) * 0.5f), ImGuiCond_Once);
 	ImGui::Begin("dropship", p_open, window_flags);
 
 	{
