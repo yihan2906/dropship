@@ -40,14 +40,6 @@ Dashboard::Dashboard()
 
 	this->header_actions.push_back(std::make_unique<PopupButton>("options", "icon_options", std::move(std::vector<Action>({
 		{
-			.title = "auto update",
-			.description = "",
-			.tooltip = "default: off\n\nwhen a new version is available:\n\ton - update app on launch \n\toff - an update button will appear on the dashboard",
-			.action = [this]() { (*g_settings).toggleOptionAutoUpdate(); },
-			.state = [this]() { return (*g_settings).getAppSettings().options.auto_update; },
-			.external = false,
-		},
-		{
 			.title = "ping servers",
 			//.description = "constantly",
 			.description = "",

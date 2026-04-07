@@ -16,7 +16,6 @@ namespace dropship::settings {
 
 		j = json {
 			{"options", {
-				{ "auto_update", p.options.auto_update },
 				{ "ping_servers", p.options.ping_servers },
 				{ "tunneling", p.options.tunneling },
 				{ "whitelist_only", p.options.whitelist_only },
@@ -35,7 +34,6 @@ namespace dropship::settings {
 
 
 	void from_json(const json& j, dropship_app_settings& p) {
-		if (j.contains("/options/auto_update"_json_pointer)) j.at("/options/auto_update"_json_pointer).get_to(p.options.auto_update);
 		if (j.contains("/options/ping_servers"_json_pointer)) j.at("/options/ping_servers"_json_pointer).get_to(p.options.ping_servers);
 		if (j.contains("/options/tunneling"_json_pointer)) j.at("/options/tunneling"_json_pointer).get_to(p.options.tunneling);
 		if (j.contains("/options/whitelist_only"_json_pointer)) j.at("/options/whitelist_only"_json_pointer).get_to(p.options.whitelist_only);
@@ -352,11 +350,6 @@ void Settings::blockAll() {
 		}
 	}
 
-	this->tryWriteSettingsToStorage();
-}
-
-void Settings::toggleOptionAutoUpdate() {
-	this->_dropship_app_settings.options.auto_update = !this->_dropship_app_settings.options.auto_update;
 	this->tryWriteSettingsToStorage();
 }
 

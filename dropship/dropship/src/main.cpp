@@ -28,7 +28,6 @@
 #include "core/Dashboard.h"
 
 #include "core/Firewall.h"
-#include "core/Update.h"
 #include "core/Tunneling.h"
 
 #include "util/watcher/window.h"
@@ -85,7 +84,6 @@ HWND g_hwnd = nullptr;
     std::unique_ptr<std::vector<std::shared_ptr<Endpoint2>>> g_endpoints;
     std::unique_ptr<Firewall> g_firewall;
     std::unique_ptr<Dashboard> g_dashboard;
-    std::unique_ptr<Updater> g_updater;
     std::unique_ptr<Settings> g_settings;
     std::unique_ptr<core::tunneling::Tunneling> g_tunneling;
     std::unique_ptr<util::watcher::window::WindowWatcher> g_window_watcher;
@@ -384,7 +382,6 @@ int main(int, char**)
         g_settings = std::make_unique<Settings>();
         g_tunneling = std::make_unique<core::tunneling::Tunneling>();
         g_dashboard = std::make_unique<Dashboard>();
-        g_updater = std::make_unique<Updater>();
 
 
         //loadAssets();
@@ -520,7 +517,6 @@ int main(int, char**)
     g_window_watcher.reset();
     g_settings.reset();
     g_dashboard.reset();
-    g_updater.reset();
 
     /*delete font_title;
     delete font_subtitle;

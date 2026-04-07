@@ -2,7 +2,6 @@
 
 #include "App.h"
 
-extern std::unique_ptr<Updater> g_updater;
 extern std::unique_ptr<Dashboard> g_dashboard;
 extern std::unique_ptr<Firewall> g_firewall;
 extern std::unique_ptr<Settings> g_settings;
@@ -80,7 +79,6 @@ void App::render(bool* p_open) {
 	{
 		/* draw */
 
-		if (g_updater) (*g_updater).render();
 		if (g_dashboard) (*g_dashboard).render();
 		if (g_firewall) (*g_firewall).render();
 		if (g_settings) (*g_settings).render();

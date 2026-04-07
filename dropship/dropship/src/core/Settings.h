@@ -29,7 +29,6 @@ namespace dropship::settings {
     /* note - always update to_json and from_json if new options are added */
     struct dropship_app_settings {
         struct _dropship_app_settings__options {
-            bool auto_update { false };
             bool ping_servers { false };
             bool tunneling{ true };
             bool whitelist_only { false };
@@ -246,7 +245,6 @@ class Settings
         void unblockAll();
         void blockAll();
 
-        void toggleOptionAutoUpdate();
         void toggleOptionPingServers();
         void toggleOptionTunneling();
         void toggleOptionWhitelistOnly();

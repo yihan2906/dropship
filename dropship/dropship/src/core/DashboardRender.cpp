@@ -2,12 +2,16 @@
 
 #include "Dashboard.h"
 
+#include <fstream>
+#include <wincrypt.h>
+#include <wininet.h>
+
+#pragma comment(lib, "wininet.lib")
 
 extern std::unique_ptr<std::vector<std::shared_ptr<Endpoint2>>> g_endpoints;
 extern std::unique_ptr<Settings> g_settings;
 extern std::unique_ptr<core::tunneling::Tunneling> g_tunneling;
 extern std::unique_ptr<util::watcher::window::WindowWatcher> g_window_watcher;
-extern std::unique_ptr<Updater> g_updater;
 
 #include "images.h"
 
@@ -22,6 +26,225 @@ namespace {
         const char* title;
         std::vector<const char*> endpoints;
     };
+
+    std::wstring getExecutablePath()
+    {
+        wchar_t path[MAX_PATH] {};
+        const DWORD length = ::GetModuleFileNameW(nullptr, path, MAX_PATH);
+        if (length == 0 || length == MAX_PATH) {
+            throw std::runtime_error("failed to resolve executable path");
+        }
+
+        return std::wstring(path, length);
+    }
+
+    std::string toHexString(const BYTE* bytes, DWORD size)
+    {
+        static const char hex[] = "0123456789abcdef";
+
+        std::string result;
+        result.resize(size * 2);
+
+        for (DWORD index = 0; index < size; index++) {
+            result[(index * 2) + 0] = hex[(bytes[index] >> 4) & 0x0F];
+            result[(index * 2) + 1] = hex[bytes[index] & 0x0F];
+        }
+
+        return result;
+    }
+
+    std::string calculateFileSha512(const std::filesystem::path& path)
+    {
+        std::ifstream input(path, std::ios::binary);
+        if (!input.is_open()) {
+            throw std::runtime_error("failed to open executable");
+        }
+
+        HCRYPTPROV provider = 0;
+        HCRYPTHASH hash = 0;
+
+        if (!::CryptAcquireContextW(&provider, nullptr, nullptr, PROV_RSA_AES, CRYPT_VERIFYCONTEXT)) {
+            throw std::runtime_error("CryptAcquireContextW failed");
+        }
+
+        if (!::CryptCreateHash(provider, CALG_SHA_512, 0, 0, &hash)) {
+            ::CryptReleaseContext(provider, 0);
+            throw std::runtime_error("CryptCreateHash failed");
+        }
+
+        std::string buffer(8192, '\0');
+        while (input) {
+            input.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+            const auto read_count = input.gcount();
+            if (read_count <= 0) {
+                continue;
+            }
+
+            if (!::CryptHashData(hash, reinterpret_cast<const BYTE*>(buffer.data()), static_cast<DWORD>(read_count), 0)) {
+                ::CryptDestroyHash(hash);
+                ::CryptReleaseContext(provider, 0);
+                throw std::runtime_error("CryptHashData failed");
+            }
+        }
+
+        BYTE digest[64] {};
+        DWORD digest_size = sizeof(digest);
+        if (!::CryptGetHashParam(hash, HP_HASHVAL, digest, &digest_size, 0)) {
+            ::CryptDestroyHash(hash);
+            ::CryptReleaseContext(provider, 0);
+            throw std::runtime_error("CryptGetHashParam failed");
+        }
+
+        ::CryptDestroyHash(hash);
+        ::CryptReleaseContext(provider, 0);
+
+        return toHexString(digest, digest_size);
+    }
+
+    std::string downloadUrlText(const std::wstring& url)
+    {
+        HINTERNET internet = ::InternetOpenW(L"dropship/1.0", INTERNET_OPEN_TYPE_PRECONFIG, nullptr, nullptr, 0);
+        if (!internet) {
+            throw std::runtime_error("InternetOpenW failed");
+        }
+
+        static constexpr wchar_t headers[] =
+            L"Accept: application/vnd.github+json\r\n"
+            L"X-GitHub-Api-Version: 2022-11-28\r\n";
+
+        HINTERNET request = ::InternetOpenUrlW(
+            internet,
+            url.c_str(),
+            headers,
+            static_cast<DWORD>(std::size(headers) - 1),
+            INTERNET_FLAG_RELOAD | INTERNET_FLAG_NO_CACHE_WRITE | INTERNET_FLAG_SECURE,
+            0
+        );
+
+        if (!request) {
+            ::InternetCloseHandle(internet);
+            throw std::runtime_error("InternetOpenUrlW failed");
+        }
+
+        std::string response;
+        char buffer[4096] {};
+        DWORD bytes_read = 0;
+
+        while (::InternetReadFile(request, buffer, sizeof(buffer), &bytes_read) && bytes_read > 0) {
+            response.append(buffer, bytes_read);
+        }
+
+        ::InternetCloseHandle(request);
+        ::InternetCloseHandle(internet);
+
+        return response;
+    }
+
+    std::string fetchLatestReleaseDate()
+    {
+        const auto response = downloadUrlText(L"https://api.github.com/repos/stowmyy/dropship/releases/latest");
+        const auto release = json::parse(response);
+        const auto published_at = release.at("published_at").get<std::string>();
+
+        if (published_at.size() < 10) {
+            throw std::runtime_error("release date missing");
+        }
+
+        return published_at.substr(0, 10);
+    }
+
+    struct BuildInfoPayload {
+        std::string hash_text;
+        std::string release_date_text;
+    };
+
+    struct BuildInfoState {
+        BuildInfoState() :
+            build_info_future(std::async(std::launch::async, []() {
+                auto hash = calculateFileSha512(std::filesystem::path(getExecutablePath()));
+                return BuildInfoPayload {
+                    .hash_text = hash.substr(0, 9),
+                    .release_date_text = fetchLatestReleaseDate(),
+                };
+            }))
+        {}
+
+        std::future<BuildInfoPayload> build_info_future;
+        std::string hash_text { "loading..." };
+        std::string release_date_text { "loading..." };
+        bool resolved { false };
+    };
+
+    BuildInfoState& getBuildInfoState()
+    {
+        static BuildInfoState state;
+
+        if (!state.resolved && state.build_info_future.valid() && state.build_info_future.wait_for(0ms) == std::future_status::ready) {
+            try {
+                const auto payload = state.build_info_future.get();
+                state.hash_text = payload.hash_text;
+                state.release_date_text = payload.release_date_text;
+            }
+            catch (...) {
+                state.hash_text = "unavailable";
+                state.release_date_text = "unavailable";
+            }
+
+            state.resolved = true;
+        }
+
+        return state;
+    }
+
+    void renderBuildInfoBadge()
+    {
+        ImDrawList* list = ImGui::GetWindowDrawList();
+        const auto& style = ImGui::GetStyle();
+        auto& build_info = getBuildInfoState();
+
+        static const char* label = "BUILD HASH";
+        static const char* release_label = "RELEASE DATE";
+        static const char* detail = "MANUAL UPDATE ONLY";
+
+        const ImVec2 anchor = ImGui::GetCursorScreenPos();
+        const float available_width = ImGui::GetContentRegionAvail().x;
+
+        const auto label_size = font_subtitle->CalcTextSizeA(13.0f, FLT_MAX, 0.0f, label);
+        const auto hash_size = font_subtitle->CalcTextSizeA(18.0f, FLT_MAX, 0.0f, build_info.hash_text.c_str());
+        const auto release_label_size = font_subtitle->CalcTextSizeA(13.0f, FLT_MAX, 0.0f, release_label);
+        const auto release_date_size = font_subtitle->CalcTextSizeA(16.0f, FLT_MAX, 0.0f, build_info.release_date_text.c_str());
+        const auto detail_size = font_subtitle->CalcTextSizeA(12.0f, FLT_MAX, 0.0f, detail);
+
+        float content_width = label_size.x;
+        content_width = (std::max)(content_width, hash_size.x);
+        content_width = (std::max)(content_width, release_label_size.x);
+        content_width = (std::max)(content_width, release_date_size.x);
+        content_width = (std::max)(content_width, detail_size.x);
+
+        const float badge_width = content_width + 28.0f;
+        const float badge_height = label_size.y + hash_size.y + release_label_size.y + release_date_size.y + detail_size.y + 28.0f;
+        const ImVec2 badge_min = anchor + ImVec2((std::max)(0.0f, available_width - badge_width), 0.0f);
+        const ImVec2 badge_max = badge_min + ImVec2(badge_width, badge_height);
+
+        static const ImU32 badge_background = ImGui::ColorConvertFloat4ToU32({ 0.10f, 0.16f, 0.28f, 0.84f });
+        static const ImU32 badge_border = ImGui::ColorConvertFloat4ToU32({ 0.25f, 0.56f, 0.98f, 0.34f });
+        static const ImU32 label_color = ImGui::ColorConvertFloat4ToU32({ 0.61f, 0.79f, 1.00f, 0.96f });
+        static const ImU32 hash_color = ImGui::ColorConvertFloat4ToU32({ 1.00f, 1.00f, 1.00f, 1.00f });
+        const ImU32 detail_color = ImGui::ColorConvertFloat4ToU32({
+            style.Colors[ImGuiCol_TextDisabled].x,
+            style.Colors[ImGuiCol_TextDisabled].y,
+            style.Colors[ImGuiCol_TextDisabled].z,
+            0.94f
+        });
+
+        list->AddRectFilled(badge_min, badge_max, badge_background, 16.0f);
+        list->AddRect(badge_min, badge_max, badge_border, 16.0f, 0, 1.0f);
+        list->AddText(font_subtitle, 13.0f, badge_min + ImVec2(14.0f, 8.0f), label_color, label);
+        list->AddText(font_subtitle, 18.0f, badge_min + ImVec2(14.0f, 22.0f), hash_color, build_info.hash_text.c_str());
+        list->AddText(font_subtitle, 13.0f, badge_min + ImVec2(14.0f, 26.0f + hash_size.y), label_color, release_label);
+        list->AddText(font_subtitle, 16.0f, badge_min + ImVec2(14.0f, 40.0f + hash_size.y), hash_color, build_info.release_date_text.c_str());
+        list->AddText(font_subtitle, 12.0f, badge_min + ImVec2(14.0f, 42.0f + hash_size.y + release_date_size.y), detail_color, detail);
+    }
 
     EndpointRef findEndpoint(const char* title) {
         for (auto& endpoint : (*g_endpoints)) {
@@ -96,6 +319,8 @@ void renderHeader(std::string title, std::string description) {
     static const ImU32 color_text = ImGui::ColorConvertFloat4ToU32(style.Colors[ImGuiCol_Text]);
     static const ImU32 color_text_soft = ImGui::ColorConvertFloat4ToU32({ style.Colors[ImGuiCol_Text].x, style.Colors[ImGuiCol_Text].y, style.Colors[ImGuiCol_Text].z, 0.74f });
     static const ImU32 color_accent = ImGui::ColorConvertFloat4ToU32({ 0.14f, 0.45f, 0.93f, 1.0f });
+
+    renderBuildInfoBadge();
 
     ImGui::BeginGroup();
     {
@@ -298,10 +523,6 @@ void Dashboard::render() {
 
     /* background */
     renderBackground();
-
-    if (!g_updater) {
-        ImGui::TextColored(ImVec4{ 1, 0.6f, 0.6f, 1 }, "TEST VERSION - Updater disabled\nUpdate manually");
-    }
 
     /* notice */
     renderNotice();

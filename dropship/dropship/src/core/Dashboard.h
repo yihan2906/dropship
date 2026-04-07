@@ -8,8 +8,6 @@
 #include "core/Tunneling.h"
 #include "util/watcher/window.h"
 
-#include "core/Update.h"
-
 //const PopupButton header_actions[2] = { "Volvo", "BMW", "Ford", "Mazda" };aaaaaa
 
 class Dashboard

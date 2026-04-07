@@ -177,7 +177,6 @@
     <ClCompile Include="src\core\Firewall.cpp" />
     <ClCompile Include="src\core\FirewallRender.cpp" />
     <ClCompile Include="src\core\Settings.cpp" />
-    <ClCompile Include="src\core\Update.cpp" />
     <ClCompile Include="src\pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
@@ -189,8 +188,6 @@
     <ClCompile Include="src\util\ping\Pinger.cpp" />
     <ClCompile Include="src\util\timer\timer.cpp" />
     <ClCompile Include="src\util\watcher\window.cpp" />
-    <ClCompile Include="src\util\win\win_download\download_file.cpp" />
-    <ClCompile Include="src\util\win\win_download\download_text.cpp" />
     <ClCompile Include="src\util\win\win_filesystem\file_picker.cpp" />
     <ClCompile Include="src\util\win\win_firewall\windows_firewall.cpp" />
     <ClCompile Include="src\util\win\win_network\windows_network.cpp" />
@@ -249,7 +246,6 @@
     <ClInclude Include="src\core\Debug.h" />
     <ClInclude Include="src\core\Firewall.h" />
     <ClInclude Include="src\core\Settings.h" />
-    <ClInclude Include="src\core\Update.h" />
     <ClInclude Include="src\pch.h" />
     <ClInclude Include="src\theme.h" />
     <ClInclude Include="src\util\ping\asio\asio.h" />
@@ -258,10 +254,6 @@
     <ClInclude Include="src\util\ping\Pinger.h" />
     <ClInclude Include="src\util\timer\timer.h" />
     <ClInclude Include="src\util\watcher\window.h" />
-    <ClInclude Include="src\util\sha512.hh" />
-    <ClInclude Include="src\util\trim.h" />
-    <ClInclude Include="src\util\win\win_download\download_file.h" />
-    <ClInclude Include="src\util\win\win_download\download_txt.h" />
     <ClInclude Include="src\util\win\win_filesystem\file_picker.h" />
     <ClInclude Include="src\util\win\win_firewall\windows_firewall.h" />
     <ClInclude Include="src\util\win\win_network\windows_network.h" />

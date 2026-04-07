@@ -10,7 +10,6 @@
 #include "core/Dashboard.h"
 
 #include "core/Firewall.h"
-#include "core/Update.h"
 
 
 namespace App
