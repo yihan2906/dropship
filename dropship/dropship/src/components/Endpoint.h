@@ -38,7 +38,7 @@ class Endpoint2
 		~Endpoint2();
 
 		/* display a visual for the endpoint */
-		void render(int hue_index = 0, bool compact = false);
+		bool render(int hue_index = 0, bool compact = false);
 
 		/* is this endpoint blocked */
 		//bool isBlocked();

@@ -8,7 +8,7 @@ extern ImFont* font_title;
 extern ImFont* font_subtitle;
 extern ImFont* font_text;
 
-void Endpoint2::render(int i, bool compact) {
+bool Endpoint2::render(int i, bool compact) {
 	const float available_width = ImGui::GetContentRegionAvail().x;
 	const bool narrow = compact && available_width < 210.0f;
 	const float card_height = compact ? 36.0f : 60.0f;
@@ -172,4 +172,6 @@ void Endpoint2::render(int i, bool compact) {
 	} */
 
 	ImGui::Dummy({ 0, compact ? 0.0f : 2.0f });
+
+	return action;
 }

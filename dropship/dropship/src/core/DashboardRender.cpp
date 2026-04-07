@@ -392,9 +392,7 @@ void renderEndpoints() {
                     continue;
                 }
 
-                (*endpoint).render(hue_index++, true);
-
-                if (ImGui::IsItemActivated()) {
+                if ((*endpoint).render(hue_index++, true)) {
                     syncEndpointState(endpoint);
                 }
             }
