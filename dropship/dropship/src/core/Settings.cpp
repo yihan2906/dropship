@@ -2,6 +2,8 @@
 
 #include "Settings.h"
 
+#include <fstream>
+
 
 extern std::unique_ptr<std::vector<std::shared_ptr<Endpoint2>>> g_endpoints;
 extern std::unique_ptr<Firewall> g_firewall;
@@ -29,41 +31,6 @@ namespace dropship::settings {
 		{
 			j["/config/tunneling_path"_json_pointer] = p.config.tunneling_path.value();
 		}
-	}
-	
-	json strip_diff_dropship_app_settings(const json& j_default, const json& j) {
-
-		json result;
-
-		// web https://json.nlohmann.me/features/json_pointer/
-
-		/* types that support equality */
-		const std::array /*<json::json_pointer, _>*/ compare
-		{
-			/* bool */
-			"/options/auto_update"_json_pointer,
-			"/options/ping_servers"_json_pointer,
-			"/options/tunneling"_json_pointer,
-			"/options/whitelist_only"_json_pointer,
-
-			/* vector<string> */
-			"/config/blocked_endpoints"_json_pointer,
-			"/config/allowed_endpoints"_json_pointer,
-		};
-
-		for (auto& p : compare)
-			if (j.contains(p) && j_default.at(p) != j.at(p))
-				result[p] = j.at(p);
-
-
-		/* optional values */
-		const auto p = "/config/tunneling_path"_json_pointer;
-		if (j.contains(p))
-		{
-			result[p] = j.at(p);
-		}
-
-		return result;
 	}
 
 
@@ -163,29 +130,42 @@ std::string Settings::getAllBlockedAddresses() {
 
 
 
-std::optional<json> Settings::readStoragePatch__win_firewall() {
+std::filesystem::path Settings::getStoragePath() const {
+	wchar_t local_app_data[MAX_PATH] = { 0 };
+	const auto length = ::GetEnvironmentVariableW(L"LOCALAPPDATA", local_app_data, MAX_PATH);
 
-#ifdef _DEBUG
-	util::timer::Timer timer("readStoragePatch__win_firewall");
-#endif
-
-	std::optional<json> result = std::nullopt;
-
-	auto loaded_settings = (*g_firewall).tryFetchSettingsFromFirewall();
-	if (loaded_settings)
-	{
-
-		try {
-			//result = std::make_optional<json>(loaded_settings.value());
-			result = std::make_optional<json>(json::from_msgpack(loaded_settings.value()));
-			println("loaded patch: {}", result.value().dump(4));
-		}
-		catch (json::exception& e) {
-			println("json error: {}", e.what());
-		}
+	if (length > 0 && length < MAX_PATH) {
+		return std::filesystem::path(local_app_data).append("dropship").append("settings.json");
 	}
 
-	return result;
+	return std::filesystem::current_path().append("settings.json");
+}
+
+std::optional<json> Settings::readStoragePatch__file() {
+
+#ifdef _DEBUG
+	util::timer::Timer timer("readStoragePatch__file");
+#endif
+
+	const auto path = this->getStoragePath();
+	if (!std::filesystem::exists(path)) {
+		return std::nullopt;
+	}
+
+	std::ifstream input(path, std::ios::binary);
+	if (!input.is_open()) {
+		println("failed to open settings file: {}", path.string());
+		return std::nullopt;
+	}
+
+	try {
+		return std::make_optional<json>(json::parse(input));
+	}
+	catch (const json::exception& e) {
+		println("settings file parse error: {}", e.what());
+	}
+
+	return std::nullopt;
 }
 
 void Settings::tryLoadSettingsFromStorage() {
@@ -209,7 +189,6 @@ void Settings::tryLoadSettingsFromStorage() {
 }
 
 
-/* note: windows firewall has a 1024 description */
 void Settings::tryWriteSettingsToStorage(bool force) {
 
 #ifdef _DEBUG
@@ -231,42 +210,30 @@ void Settings::tryWriteSettingsToStorage(bool force) {
 		this->_waiting_for_config_write = false;
 	}
 
+	try {
+		const auto path = this->getStoragePath();
+		std::filesystem::create_directories(path.parent_path());
+
+		std::ofstream output(path, std::ios::binary | std::ios::trunc);
+		if (!output.is_open()) {
+			println("failed to open settings file for write: {}", path.string());
+		}
+		else {
+			output << json(this->_dropship_app_settings).dump(4);
+		}
+	}
+	catch (const std::exception& e) {
+		println("settings file write error: {}", e.what());
+	}
+
 	if (!this->_waiting_for_config_write || force)
 	{
-		// calculate diff
-		/*auto diff = json::diff(this->__default_dropship_app_settings, this->_dropship_app_settings);
-		println("diff: {}", diff.dump(4));*/
-
-		json stripped = dropship::settings::strip_diff_dropship_app_settings(this->__default_dropship_app_settings, this->_dropship_app_settings);
-
-		if (stripped.is_null())
-		{
-			stripped = this->__default_dropship_app_settings;
-		}
-
-		// throws error
-		//println("writing: {}", stripped.dump(4));
-
-		/* note: diff calcuated in to_json defined above */
-		auto packed = json::to_msgpack(stripped);
-		std::string s(packed.begin(), packed.end());
-
-		(*g_firewall).tryWriteSettingsToFirewall(s, this->getAllBlockedAddresses(), this->getAppSettings().options.tunneling ? this->getAppSettings().config.tunneling_path : std::nullopt);
-
+		(*g_firewall).applyRuleState(this->getAllBlockedAddresses(), this->getAppSettings().options.tunneling ? this->getAppSettings().config.tunneling_path : std::nullopt);
 
 		// TODO if not failed
 		for (auto& endpoint : (*g_endpoints)) {
 			(*endpoint)._setBlockedState(this->isEndpointBlocked((*endpoint).getTitle()));
 		}
-
-
-		//std::basic_string_view<uint8_t> packed_sv (packed.data(), packed.size());
-		//std::string packed_s{ packed_sv };
-		//auto s = std::string_view<uint8_t>(packed);
-
-		//(*g_firewall).tryWriteSettingsToFirewall(s);
-
-		//printf("packed: <%s>\n", s.c_str());
 	}
 
 	else
@@ -301,7 +268,7 @@ void Settings::tryWriteSettingsToStorage(bool force) {
 
 
 std::optional<json> Settings::readStoragePatch() {
-	return this->readStoragePatch__win_firewall();
+	return this->readStoragePatch__file();
 }
 
 
@@ -313,11 +280,7 @@ Settings::Settings() {
 
 	this->tryLoadSettingsFromStorage();
 
-	/*
-		1. grab settings from firewall manager
-		2. if failed, show failed and use default settings.
-	
-	*/
+	/* load local settings file if present, otherwise use defaults */
 
 	(*g_endpoints).reserve(this->__ow2_endpoints.size());
 
@@ -332,6 +295,9 @@ Settings::Settings() {
 			blocked
 		));
 	}
+
+	// Ensure the firewall rule matches the local settings file and clear any legacy rule metadata.
+	this->tryWriteSettingsToStorage(true);
 
 
 	/*std::cout << "__ow2_ranges: " << __ow2_servers.dump(4) << std::endl;

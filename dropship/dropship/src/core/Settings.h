@@ -48,8 +48,6 @@ namespace dropship::settings {
 
     void from_json(const json& j, dropship_app_settings& p);
 
-    /* custom so i only store changes in firewall */
-    json strip_diff_dropship_app_settings(const json& j_default, const json& j);
 };
 
 
@@ -264,7 +262,8 @@ class Settings
 
     private:
 
-        [[nodiscard]] std::optional<json> readStoragePatch__win_firewall();
+        [[nodiscard]] std::filesystem::path getStoragePath() const;
+        [[nodiscard]] std::optional<json> readStoragePatch__file();
         [[nodiscard]] std::optional<json> readStoragePatch();
 
         [[nodiscard]] std::set<std::string> getBlockedEndpointTitles() const;

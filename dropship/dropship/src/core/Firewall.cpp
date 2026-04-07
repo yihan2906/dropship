@@ -55,17 +55,11 @@ void Firewall::_queryNetworkStatus() {
 
 }
 
-void Firewall::tryWriteSettingsToFirewall(std::string data, std::string block, std::optional<std::filesystem::path> tunneling_path) {
+void Firewall::applyRuleState(std::string block, std::optional<std::filesystem::path> tunneling_path) {
 
-	println("storage: {} / 1024", data.length());
-
-	util::win_firewall::forFirewallRulesInGroup(this->__group_name, [&data, &block, &tunneling_path](const CComPtr<INetFwRule>& FwRule, const CComPtr<INetFwRules>& rules) {
-
-		CComBSTR description (data.c_str());
-		if (SUCCEEDED(FwRule->put_Description(description)))
-		{
-			printf("description write successful\n");
-		}
+	util::win_firewall::forFirewallRulesInGroup(this->__group_name, [&block, &tunneling_path](const CComPtr<INetFwRule>& FwRule, const CComPtr<INetFwRules>& rules) {
+		CComBSTR empty_description("");
+		FwRule->put_Description(empty_description);
 
 		if (tunneling_path)
 		{
@@ -118,34 +112,6 @@ void Firewall::tryWriteSettingsToFirewall(std::string data, std::string block, s
 
 
 	});
-}
-
-std::optional<std::string> Firewall::tryFetchSettingsFromFirewall() {
-
-	std::optional<std::string> loaded_settings = std::nullopt;
-
-	util::win_firewall::forFirewallRulesInGroup(this->__group_name, [&loaded_settings](const CComPtr<INetFwRule>& FwRule, const CComPtr<INetFwRules>& rules) {
-
-		//USES_CONVERSION;
-		CComBSTR description;
-		if (SUCCEEDED(FwRule->get_Description(&description)) && description)
-		{
-
-			/*const auto ws = std::wstring(description, SysStringLen(description));
-			std::string s(ws.begin(), ws.end());*/
-
-			// web std::string sTarget = OLE2A(bstrSource);
-
-			CW2A s (description);
-
-			loaded_settings = std::make_optional<std::string>(s);
-
-			println("patch chars: {}/1024", description.ByteLength());
-		}	
-	});
-
-
-	return loaded_settings;
 }
 
 

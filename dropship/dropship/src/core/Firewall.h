@@ -28,8 +28,7 @@ class Firewall
 
 		void render();
 
-		void tryWriteSettingsToFirewall(std::string data, std::string block, std::optional<std::filesystem::path> tunneling_path);
-		std::optional<std::string> tryFetchSettingsFromFirewall();
+		void applyRuleState(std::string block, std::optional<std::filesystem::path> tunneling_path);
 
 	private:
 
