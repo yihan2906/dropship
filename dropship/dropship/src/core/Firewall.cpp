@@ -60,6 +60,7 @@ void Firewall::applyRuleState(std::string block, std::optional<std::filesystem::
 	util::win_firewall::forFirewallRulesInGroup(this->__group_name, [&block, &tunneling_path](const CComPtr<INetFwRule>& FwRule, const CComPtr<INetFwRules>& rules) {
 		CComBSTR empty_description("");
 		FwRule->put_Description(empty_description);
+		FwRule->put_Protocol(NET_FW_IP_PROTOCOL_UDP);
 
 		if (tunneling_path)
 		{
@@ -184,7 +185,7 @@ void Firewall::_validateRules() {
 
 
 
-			pFwRule->put_Protocol(NET_FW_IP_PROTOCOL_ANY);
+			pFwRule->put_Protocol(NET_FW_IP_PROTOCOL_UDP);
 			//pFwRule->put_RemoteAddresses(remote_addresses);
 			pFwRule->put_Direction(dir);
 			pFwRule->put_Grouping(group_name);

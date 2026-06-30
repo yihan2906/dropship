@@ -137,9 +137,9 @@ class Settings
             { "blizzard/tpe1", { .block = "5.42.160.0/22,5.42.164.0/22", } },
 
             /* ams1
-                - 
+                - 137.221.78.0/24 is the current Blizzard AMS gameplay range observed in live matches
             */
-            { "blizzard/ams1", { .block = "64.224.26.0/23" } },
+            { "blizzard/ams1", { .block = "64.224.26.0/23,137.221.78.0/24" } },
 
             /* gue4
                 -
